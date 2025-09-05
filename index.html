@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>极简计时器</title>
-    <!-- 引入字体: Inter用于常规文本, Orbitron用于时间显示 -->
+    <!-- 引入字体: Inter用于常规文本, Chakra Petch用于时间显示 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Chakra+Petch:wght@700&display=swap" rel="stylesheet">
@@ -240,9 +240,18 @@
         }
         
         function switchMode() {
+            const wasFocusMode = isFocusMode;
             isFocusMode = !isFocusMode;
             currentTime = isFocusMode ? mainTimeSeconds : secondaryTimeSeconds;
+            
+            // 播放声音和语音
             playNotificationSound();
+            if (wasFocusMode) {
+                speak("休息一下");
+            } else {
+                speak("继续开始吧");
+            }
+
             updateDisplay();
         }
 
@@ -309,19 +318,52 @@
             closeModal();
         }
 
+        // --- Audio Functions ---
 
+        /**
+         * 播放语音提醒
+         * @param {string} text - 要播报的文本
+         */
+        function speak(text) {
+            if ('speechSynthesis' in window) {
+                // 确保之前的语音已停止，避免重叠
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-CN'; // 设置语言为中文
+                utterance.rate = 1.1; // 语速可以微调
+                window.speechSynthesis.speak(utterance);
+            } else {
+                console.log("浏览器不支持语音合成功能。");
+            }
+        }
+
+        /**
+         * 播放连续的提示音
+         */
         function playNotificationSound() {
             try {
                 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioContext.createOscillator(); // 修复: audio-context -> audioContext
-                const gainNode = audioContext.createGain();
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                oscillator.type = 'sine';
-                oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
-                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-                oscillator.start(audioContext.currentTime);
-                oscillator.stop(audioContext.currentTime + 0.2);
+                let count = 0;
+                const playBeep = () => {
+                    const oscillator = audioContext.createOscillator(); 
+                    const gainNode = audioContext.createGain();
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+                    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.15);
+                };
+                
+                const soundInterval = setInterval(() => {
+                    playBeep();
+                    count++;
+                    if (count >= 5) {
+                        clearInterval(soundInterval);
+                    }
+                }, 300); // 每300毫秒响一声
+
             } catch (e) { console.error("Could not play sound:", e); }
         }
 
@@ -345,12 +387,10 @@
             currentTime = mainTimeSeconds;
             startStopBtn.innerHTML = playIcon;
             updateDisplay();
-            // 修复: 移除了此处动态插入CSS规则的代码
         }
 
         initialize();
     </script>
 </body>
 </html>
-
 
