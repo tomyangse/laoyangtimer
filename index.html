@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极简计时器</title>
+    <!-- 引入字体: Inter用于常规文本, Orbitron用于时间显示 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Chakra+Petch:wght@700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* --- 变量定义与全局样式 --- */
+        :root {
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-color: #3d3d3d;
+            --label-color: #a0a0a0;
+            --divider-color: #eeeeee;
+            --btn-start-bg: #f39c12;
+            --btn-focus-bg: #3498db;
+            --btn-break-bg: #2ecc71;
+            --shadow-color: rgba(0, 0, 0, 0.08);
+            --modal-backdrop-color: rgba(0, 0, 0, 0.4);
+            --dynamic-thumb-color: var(--btn-focus-bg); /* 新增: 为滑动条设置默认颜色 */
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: var(--text-color);
+            -webkit-tap-highlight-color: transparent;
+            overflow: hidden; /* 防止滚动 */
+        }
+
+        /* --- 计时器容器 --- */
+        .timer-container {
+            background-color: var(--card-bg);
+            border-radius: 24px;
+            padding: 32px;
+            box-shadow: 0 16px 40px var(--shadow-color);
+            width: 90vw;
+            max-width: 480px;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+            align-items: center;
+        }
+
+        /* --- 左侧: 时间显示区域 --- */
+        .time-section { display: flex; flex-direction: column; gap: 16px; }
+        .time-group { text-align: left; }
+        #focus-group { padding-bottom: 16px; border-bottom: 2px solid var(--divider-color); }
+        .time-group .label { font-size: 0.9rem; color: var(--label-color); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+        .time-group .time-display { font-family: 'Chakra Petch', sans-serif; font-weight: 700; line-height: 1; }
+        #main-time-display { font-size: clamp(3.5rem, 15vw, 5rem); }
+        #secondary-time-display { font-size: clamp(2.2rem, 10vw, 2.8rem); opacity: 0.4; }
+        .time-group.active .time-display { color: var(--text-color); opacity: 1; }
+
+        /* --- 右侧: 控制按钮 --- */
+        .controls { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+        .controls button { border: none; border-radius: 50%; cursor: pointer; color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.2s ease; position: relative; }
+        .controls button:hover { transform: scale(1.05); box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+        .controls button:active { transform: scale(0.98); }
+        .btn-label { font-size: 0.6rem; font-weight: bold; text-transform: uppercase; margin-top: 4px; font-family: 'Inter', sans-serif; }
+        
+        /* 按钮尺寸调整 */
+        #start-stop-btn { width: 84px; height: 84px; background-color: var(--btn-start-bg); }
+        #set-main-btn, #set-secondary-btn { width: 64px; height: 64px; }
+        #set-main-btn { background-color: var(--btn-focus-bg); }
+        #set-secondary-btn { background-color: var(--btn-break-bg); }
+        .icon { width: 32px; height: 32px; }
+        #set-main-btn .icon, #set-secondary-btn .icon { width: 20px; height: 20px; }
+
+        /* --- 时间设置弹窗 --- */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--modal-backdrop-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal-backdrop.visible { opacity: 1; pointer-events: auto; }
+
+        .modal {
+            background-color: var(--card-bg);
+            border-radius: 20px;
+            padding: 24px;
+            width: 90vw;
+            max-width: 320px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+        .modal-backdrop.visible .modal { transform: scale(1); }
+        
+        #modal-title { font-size: 1.1rem; margin-bottom: 20px; text-align: center; }
+        .slider-container { text-align: center; }
+        .slider-value { font-size: 2.5rem; font-weight: bold; margin-bottom: 15px; font-family: 'Chakra Petch', sans-serif; }
+        .slider-value span { display: inline-block; min-width: 80px; text-align: center; }
+        
+        /* 自定义滑动条样式 */
+        input[type=range] { width: 100%; -webkit-appearance: none; background: transparent; }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 8px; cursor: pointer; background: #ecf0f1; border-radius: 4px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; border: none; height: 24px; width: 24px; border-radius: 50%; background: var(--dynamic-thumb-color); cursor: pointer; margin-top: -8px; }
+        input[type=range]::-moz-range-track { width: 100%; height: 8px; cursor: pointer; background: #ecf0f1; border-radius: 4px; }
+        input[type=range]::-moz-range-thumb { border: none; height: 24px; width: 24px; border-radius: 50%; background: var(--dynamic-thumb-color); cursor: pointer; }
+        
+        .modal-buttons { display: flex; gap: 12px; margin-top: 24px; }
+        .modal-buttons button { flex: 1; padding: 12px; border: none; border-radius: 10px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background-color 0.2s; }
+        #modal-confirm-btn { background-color: var(--btn-focus-bg); color: white; }
+        #modal-cancel-btn { background-color: #ecf0f1; color: var(--text-color); }
+        
+        /* 错误提示动画 */
+        @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-3px, 0, 0); } 40%, 60% { transform: translate3d(3px, 0, 0); } }
+        .shake { animation: shake 0.6s cubic-bezier(.36,.07,.19,.97) both; }
+
+    </style>
+</head>
+<body>
+
+    <div class="timer-container" id="timer-container">
+        <!-- ... (时间显示区域HTML保持不变) ... -->
+        <div class="time-section">
+            <div class="time-group active" id="focus-group">
+                <div class="label">Focus</div>
+                <div id="main-time-display" class="time-display">30:00</div>
+            </div>
+
+            <div class="time-group" id="break-group">
+                <div class="label">Break</div>
+                <div id="secondary-time-display" class="time-display">05:00</div>
+            </div>
+        </div>
+        <!-- ... (控制按钮HTML保持不变) ... -->
+        <div class="controls">
+            <button id="start-stop-btn" title="开始/暂停"></button>
+            <button id="set-main-btn" title="设置专注时间">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                <span class="btn-label">Focus</span>
+            </button>
+            <button id="set-secondary-btn" title="设置休息时间">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                <span class="btn-label">Break</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 时间设置弹窗 HTML -->
+    <div id="modal-backdrop" class="modal-backdrop">
+        <div id="modal" class="modal">
+            <h3 id="modal-title">设置时间</h3>
+            <div class="slider-container">
+                <div class="slider-value">
+                    <span id="slider-value-display">30</span> min
+                </div>
+                <input type="range" id="time-slider" min="1" max="60" value="30">
+            </div>
+            <div class="modal-buttons">
+                <button id="modal-cancel-btn">取消</button>
+                <button id="modal-confirm-btn">确认</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- 1. DOM Element Selection ---
+        const mainTimeDisplay = document.getElementById('main-time-display');
+        const secondaryTimeDisplay = document.getElementById('secondary-time-display');
+        const startStopBtn = document.getElementById('start-stop-btn');
+        const setMainBtn = document.getElementById('set-main-btn');
+        const setSecondaryBtn = document.getElementById('set-secondary-btn');
+        const focusGroup = document.getElementById('focus-group');
+        const breakGroup = document.getElementById('break-group');
+        const originalTitle = document.title;
+
+        // Modal elements
+        const modalBackdrop = document.getElementById('modal-backdrop');
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const timeSlider = document.getElementById('time-slider');
+        const sliderValueDisplay = document.getElementById('slider-value-display');
+        const modalConfirmBtn = document.getElementById('modal-confirm-btn');
+        const modalCancelBtn = document.getElementById('modal-cancel-btn');
+
+
+        // SVG Icons
+        const playIcon = `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>`;
+        const pauseIcon = `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>`;
+        
+        // --- 2. State Variables ---
+        let mainTimeSeconds = 30 * 60;
+        let secondaryTimeSeconds = 5 * 60;
+        let currentTime;
+        let isFocusMode = true;
+        let isTimerRunning = false;
+        let timerInterval = null;
+        let settingType = null; // 'main' or 'secondary'
+
+        // --- 3. Core Functions ---
+
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+        }
+
+        function updateDisplay() {
+            if (isFocusMode) {
+                mainTimeDisplay.textContent = formatTime(currentTime);
+                secondaryTimeDisplay.textContent = formatTime(secondaryTimeSeconds);
+                focusGroup.classList.add('active');
+                breakGroup.classList.remove('active');
+            } else {
+                mainTimeDisplay.textContent = formatTime(mainTimeSeconds);
+                secondaryTimeDisplay.textContent = formatTime(currentTime);
+                focusGroup.classList.remove('active');
+                breakGroup.classList.add('active');
+            }
+            document.title = isTimerRunning ? `${formatTime(currentTime)} - ${isFocusMode ? '专注中' : '休息中'}` : originalTitle;
+        }
+        
+        function switchMode() {
+            isFocusMode = !isFocusMode;
+            currentTime = isFocusMode ? mainTimeSeconds : secondaryTimeSeconds;
+            playNotificationSound();
+            updateDisplay();
+        }
+
+        function tick() {
+            if (currentTime > 0) {
+                currentTime--;
+                updateDisplay();
+            } else {
+                switchMode();
+            }
+        }
+
+        function toggleTimer() {
+            isTimerRunning = !isTimerRunning;
+            if (isTimerRunning) {
+                if (!currentTime || currentTime <= 0) currentTime = isFocusMode ? mainTimeSeconds : secondaryTimeSeconds;
+                startStopBtn.innerHTML = pauseIcon;
+                tick(); 
+                timerInterval = setInterval(tick, 1000);
+            } else {
+                clearInterval(timerInterval);
+                startStopBtn.innerHTML = playIcon;
+            }
+            updateDisplay();
+        }
+        
+        // --- Modal Functions ---
+        function openModal(type) {
+            if (isTimerRunning) {
+                startStopBtn.classList.add('shake');
+                setTimeout(() => startStopBtn.classList.remove('shake'), 600);
+                return;
+            }
+            settingType = type;
+            const isMain = type === 'main';
+            const currentColor = isMain ? 'var(--btn-focus-bg)' : 'var(--btn-break-bg)';
+            
+            modalTitle.textContent = isMain ? '设置专注时间' : '设置休息时间';
+            const currentMinutes = Math.round((isMain ? mainTimeSeconds : secondaryTimeSeconds) / 60);
+            timeSlider.value = currentMinutes;
+            sliderValueDisplay.textContent = currentMinutes;
+
+            // Dynamically style modal elements
+            document.documentElement.style.setProperty('--dynamic-thumb-color', currentColor);
+            modalConfirmBtn.style.backgroundColor = currentColor;
+
+            modalBackdrop.classList.add('visible');
+        }
+
+        function closeModal() {
+            modalBackdrop.classList.remove('visible');
+        }
+
+        function confirmTimeSet() {
+            const minutes = parseInt(timeSlider.value, 10);
+            if (settingType === 'main') {
+                mainTimeSeconds = minutes * 60;
+            } else {
+                secondaryTimeSeconds = minutes * 60;
+            }
+            isFocusMode = true;
+            currentTime = mainTimeSeconds;
+            updateDisplay();
+            closeModal();
+        }
+
+
+        function playNotificationSound() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator(); // 修复: audio-context -> audioContext
+                const gainNode = audioContext.createGain();
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.2);
+            } catch (e) { console.error("Could not play sound:", e); }
+        }
+
+        // --- 4. Event Listeners & Initial Load ---
+        startStopBtn.addEventListener('click', toggleTimer);
+        setMainBtn.addEventListener('click', () => openModal('main'));
+        setSecondaryBtn.addEventListener('click', () => openModal('secondary'));
+        
+        // Modal Listeners
+        timeSlider.addEventListener('input', () => {
+            sliderValueDisplay.textContent = timeSlider.value;
+        });
+        modalConfirmBtn.addEventListener('click', confirmTimeSet);
+        modalCancelBtn.addEventListener('click', closeModal);
+        modalBackdrop.addEventListener('click', (e) => {
+            if (e.target === modalBackdrop) closeModal();
+        });
+
+
+        function initialize() {
+            currentTime = mainTimeSeconds;
+            startStopBtn.innerHTML = playIcon;
+            updateDisplay();
+            // 修复: 移除了此处动态插入CSS规则的代码
+        }
+
+        initialize();
+    </script>
+</body>
+</html>
+
+
